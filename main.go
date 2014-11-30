@@ -37,7 +37,7 @@
 // you are encouraged to restore your old kernel and patch using
 // an updated copy of this program:
 //
-//	go get -u code.google.com/p/rsc/cmd/pprof_mac_fix
+//	go get -u rsc.io/pprof_mac_fix
 //
 // If running http://swtch.com/~rsc/macbug.c crashes your system,
 // you have the buggy patch applied.
@@ -52,7 +52,7 @@
 // kernel as a numbered file in the kernel source directory (the root directory
 // or, for OS X 10.10 Yosemite, /System/Library/Kernels).
 //
-//	go get code.google.com/p/rsc/cmd/pprof_mac_fix
+//	go get rsc.io/pprof_mac_fix
 //	pprof_mac_fix
 //
 // Finally, cross your fingers and reboot.
@@ -120,6 +120,7 @@
 package main // import "rsc.io/pprof_mac_fix"
 
 import (
+	"bufio"
 	"bytes"
 	"debug/macho"
 	"encoding/binary"
@@ -157,7 +158,6 @@ func getOS() string {
 
 func main() {
 	log.SetFlags(0)
-	fmt.Fprintf(os.Stderr, "pprof_mac_fix version 10.10\n")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [-arch ARCH] [oldkernel newkernel]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "The -arch flag controls which kernel in a fat binary is modified.\n")
@@ -167,6 +167,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "With no kernel files specified, the behavior is to check\n")
 		fmt.Fprintf(os.Stderr, "that the kernel is recognized and then update the kernel\n")
 		fmt.Fprintf(os.Stderr, "in place, leaving a numbered backup file.\n")
+		fmt.Fprintf(os.Stderr, "\npprof_mac_fix version 10.10\n")
 		os.Exit(2)
 	}
 	flag.Parse()
@@ -205,10 +206,10 @@ func fixIt(k *kernel) {
 	errs := fixAnyVersion(k)
 	if errs != nil {
 		if len(errs) == 1 && errs[0] == errPatched {
-			fmt.Fprintf(os.Stderr, "%s; not rewriting\n", errs[0])
+			fmt.Fprintf(os.Stderr, "kernel %s already patched; not rewriting\n", k.file)
 			os.Exit(2)
 		}
-		fmt.Fprintf(os.Stderr, "unrecognized kernel code.\n")
+		fmt.Fprintf(os.Stderr, "unrecognized kernel: %s\n", k.file)
 		for _, err := range errs {
 			fmt.Fprintf(os.Stderr, "%s\n", err)
 		}
@@ -224,14 +225,13 @@ func automatic() {
 		// Yosemite and later.
 		file = "/System/Library/Kernels/kernel"
 	}
-	fmt.Printf("kernel in %s\n", file)
 	k := loadKernel(file)
 	old := string(k.version)
 	fixIt(k)
 
 	// Now we know we can fix it. Make sure we are root.
 	if os.Getuid() != 0 {
-		fmt.Fprintf(os.Stderr, "recognized kernel. reinvoking under sudo in order to modify kernel.\n")
+		fmt.Fprintf(os.Stderr, "restarting using sudo in order to rewrite kernel.\n")
 		self, err := exec.LookPath(os.Args[0])
 		if err != nil {
 			log.Fatal("cannot find path to binary: %v", err)
@@ -242,9 +242,22 @@ func automatic() {
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "exec sudo: %v\n", err)
 			os.Exit(2)
 		}
 		return
+	}
+
+	// Make sure user wants kernel to be written.
+	fmt.Fprintf(os.Stderr, "ready to patch kernel: %s\n", k.file)
+	fmt.Fprintf(os.Stderr, "type 'yes' to continue: ")
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		os.Exit(2)
+	}
+	if line != "yes\n" {
+		fmt.Fprintf(os.Stderr, "aborted\n")
+		os.Exit(2)
 	}
 
 	oldBytes, err := ioutil.ReadFile(file)
@@ -268,7 +281,7 @@ func automatic() {
 	if err != nil {
 		log.Fatalf("backing up kernel: %s", err)
 	}
-	fmt.Printf("kernel backed up to %s\n", newfile)
+	fmt.Printf("kernel: %s\nbackup: %s\n", k.file, newfile)
 
 	if err := os.Chmod(file, 0755); err != nil {
 		log.Fatalf("changing kernel mode: %s", err)
