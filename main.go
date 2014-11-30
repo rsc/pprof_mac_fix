@@ -231,7 +231,7 @@ func automatic() {
 
 	// Now we know we can fix it. Make sure we are root.
 	if os.Getuid() != 0 {
-		fmt.Fprintf(os.Stderr, "restarting using sudo in order to rewrite kernel.\n")
+		fmt.Fprintf(os.Stderr, "running pprof_mac_fix using sudo for permission to rewrite kernel.\n")
 		self, err := exec.LookPath(os.Args[0])
 		if err != nil {
 			log.Fatal("cannot find path to binary: %v", err)
