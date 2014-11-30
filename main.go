@@ -117,7 +117,7 @@
 //
 // A more detailed description is at http://research.swtch.com/macpprof.
 //
-package main
+package main // import "rsc.io/pprof_mac_fix"
 
 import (
 	"bytes"
