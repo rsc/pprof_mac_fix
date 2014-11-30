@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:generate bash -c "godoc . | sed '/COMMAND DOC/d; s/^    //' > README"
+
 // pprof_mac_fix applies a binary patch to the OS X kernel in order to make
 // pprof profiling report accurate values.
 //
@@ -226,7 +228,7 @@ func automatic() {
 	k := loadKernel(file)
 	old := string(k.version)
 	fixIt(k)
-	
+
 	// Now we know we can fix it. Make sure we are root.
 	if os.Getuid() != 0 {
 		fmt.Fprintf(os.Stderr, "recognized kernel. reinvoking under sudo in order to modify kernel.\n")
@@ -251,7 +253,7 @@ func automatic() {
 	}
 	n := 0
 	var newfile string
-	for ;; n++ {
+	for ; ; n++ {
 		newfile = fmt.Sprintf("%s%d", file, n)
 		_, err := os.Stat(newfile)
 		if os.IsNotExist(err) {
@@ -261,7 +263,7 @@ func automatic() {
 			fmt.Fprintf(os.Stderr, "cannot back up %s: cannot find suitable backup name\n", file)
 		}
 	}
-	
+
 	err = ioutil.WriteFile(newfile, oldBytes, 0755)
 	if err != nil {
 		log.Fatalf("backing up kernel: %s", err)
@@ -271,7 +273,7 @@ func automatic() {
 	if err := os.Chmod(file, 0755); err != nil {
 		log.Fatalf("changing kernel mode: %s", err)
 	}
-	
+
 	fmt.Printf("old version: %s\n", old)
 
 	// Update version string as displayed by uname -a.
@@ -1237,7 +1239,7 @@ func (f *fix) apply13top(tlsOff uint32, bsd_ast []byte, match1, match2 []int) (r
 	if len(repl2) != asmLen {
 		return nil, nil, 0, fmt.Errorf("bsd_ast repl1 bad math %d %d", len(repl2), asmLen)
 	}
-	
+
 	return repl1, repl2, l0, nil
 }
 

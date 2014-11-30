@@ -1,0 +1,120 @@
+
+pprof_mac_fix applies a binary patch to the OS X kernel in order to make
+pprof profiling report accurate values.
+
+
+Warning Warning Warning
+
+This program is meant to modify the operating system kernel, the program
+that runs your computer and makes it safe for all the other programs to
+run. If you damage the kernel, your computer will not be able to boot.
+
+Before using this program, ensure you can boot into ``recovery mode.''
+Many recent Macs make this possible by holding down Alt/Option when you
+hear the boot chime and selecting the ``Recovery HD.'' Otherwise, you
+can boot to the opening screen of an install DVD or thumb drive.
+
+You have been warned.
+
+
+Compatibility
+
+This program has been used successfully on the following systems:
+
+	OS X 10.6  Snow Leopard      / Darwin 10.8 / i386 only
+	OS X 10.7  Lion              / Darwin 11.4 / i386 and x86_64
+	OS X 10.8  Mountain Lion     / Darwin 12.4 / x86_64 only
+	OS X 10.9  Mavericks         / Darwin 13.0 / x86_64 only
+	OS X 10.10 Yosemite          / Darwin 14.0 / x86_64 only
+
+Snow Leopard x86_64 may work too but is untried.
+
+An earlier version of this program shipped with a buggy patch for OS X
+10.9 Mavericks/Darwin 13.0. If you used the old patch you are encouraged
+to restore your old kernel and patch using an updated copy of this
+program:
+
+	go get -u code.google.com/p/rsc/cmd/pprof_mac_fix
+
+If running http://swtch.com/~rsc/macbug.c crashes your system, you have
+the buggy patch applied.
+
+
+Installation
+
+First, read the warning above.
+
+Next, install this program and run it. If the program finds that it
+knows how to patch your kernel, it will reinvoke itself using sudo,
+which will prompt for your password and install the new kernel. It saves
+the old kernel as a numbered file in the kernel source directory (the
+root directory or, for OS X 10.10 Yosemite, /System/Library/Kernels).
+
+	go get code.google.com/p/rsc/cmd/pprof_mac_fix
+	pprof_mac_fix
+
+Finally, cross your fingers and reboot.
+
+If all goes well, running ``uname -a'' will report the time at which you
+ran pprof_mac_fix as the kernel build time.
+
+If you have a Go tree built at tip,
+
+	go test -v runtime/pprof
+
+should now say that the CPU profiling tests pass, whereas before they
+printed failure messages and were marked as skipped.
+
+
+Recovery
+
+If something goes wrong, you will need to restore the original kernel.
+To do this, boot into recovery mode. If you are using FileVault
+whole-disk encryption, start Disk Utility, unlock the disk, and then
+quit disk utility. (Disk Utility may be an option shown on the recovery
+mode screen or you may have to select it from the Utilities menu in the
+top-of-screen menu bar.) Start Terminal and then run these commands:
+
+	cd /Volumes/Mac*HD*
+	cp mach_kernel0 mach_kernel
+	bless /Volumes/Mac*HD*/System/Library/CoreServices
+
+The Mac*HD* pattern matches "Macintosh HD" and "Macintosh HD " [sic]. If
+you have changed your disk's volume name you may need to use a different
+pattern (run "mount" to see the mounted disks).
+
+I am not sure whether the bless command is strictly necessary.
+
+On OS X 10.10 Yosemite, the above command sequence changes to:
+
+	cd /Volumes/Mac*HD*/System/Library/Kernels
+	cp kernel0 kernel
+	bless /Volumes/Mac*HD*/System/Library/CoreServices
+
+Reboot. You should be back to the original, unmodified kernel. Either
+way, you need to be able to start Terminal and, if you are using
+FileVault whole-disk encryption, Disk Utility.
+
+For details on creating a bootable recovery disk or bootable
+installation disk, see http://support.apple.com/kb/HT4848 and
+http://lifehacker.com/5928780/.
+
+
+Theory of Operation
+
+The program rewrites the kernel code that delivers the profiling signals
+SIGPROF and SIGVTALRM in response to setitimer(2) calls. Instead of
+delivering the signal to the process as a whole, the new code delivers
+the signal to the thread whose execution triggered the signal; that is,
+it delivers the signal to the thread that is actually running and should
+be profiled.
+
+The rewrite only edits code in the function named bsd_ast, which is in
+charge of little more than delivering these signals. It is therefore
+unlikely to cause problems in programs not using the signals. Of course,
+there are no safety nets when changing an operating system kernel;
+caution is warranted.
+
+A more detailed description is at http://research.swtch.com/macpprof.
+
+
