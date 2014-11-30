@@ -49,7 +49,7 @@ var bsd_ast_14_0_0_fixed = mustCompile(`
 
 type Inst struct {
 	x86asm.Inst
-	Enc []byte
+	Enc   []byte
 	OldPC int
 	NewPC int
 }
@@ -61,11 +61,12 @@ func (f *fix) apply14(tlsOff uint32, bsd_ast []byte, timers [][]int) ([]byte, er
 	nnop := 0
 	pc0 := timers[0][0]
 	pc1 := timers[0][1]
-	
+
 	pcmap := map[int]int{}
 
+	var edx, ecx, rdi int
 	for len(code) > 0 {
-		xi , err := x86asm.Decode(code, 64)
+		xi, err := x86asm.Decode(code, 64)
 		if err != nil {
 			return nil, fmt.Errorf("decoding bsd_ast: %v", err)
 		}
@@ -76,31 +77,30 @@ func (f *fix) apply14(tlsOff uint32, bsd_ast []byte, timers [][]int) ([]byte, er
 			nnop += inst.Len
 			inst.Enc = nil
 		}
-		if inst.OldPC == pc0+2 || inst.OldPC == pc1+2 {
-			if inst.Op != x86asm.XOR || inst.Args[0] != x86asm.EDX || inst.Args[1] != x86asm.EDX {
-				println(inst.OldPC, inst.String())
-				panic("not xor edx, edx")
+		if pc0 <= inst.OldPC && inst.OldPC < pc0+15 || pc1 <= inst.OldPC && inst.OldPC < pc1+15 {
+			if inst.Op == x86asm.XOR && inst.Args[0] == x86asm.EDX && inst.Args[1] == x86asm.EDX {
+				edx++
+				inst.Enc = []byte{0x65, 0x48, 0x8b, 0x14, 0x25, 0x08, 0x00, 0x00, 0x00} // mov %gs:0x8,%rdx
 			}
-			inst.Enc = []byte{0x65, 0x48, 0x8b, 0x14, 0x25, 0x08, 0x00, 0x00, 0x00} // mov %gs:0x8,%rdx
-		}
-		if inst.OldPC == pc0+4 || inst.OldPC == pc1+4 {
-			if inst.Op != x86asm.XOR || inst.Args[0] != x86asm.ECX || inst.Args[1] != x86asm.ECX {
-				panic("not xor ecx, ecx")
+			if inst.Op == x86asm.XOR && inst.Args[0] == x86asm.ECX && inst.Args[1] == x86asm.ECX {
+				ecx++
+				inst.Enc = []byte{0xb9, 0x04, 0x00, 0x00, 0x00} // mov $4, %ecx
 			}
-			inst.Enc = []byte{0xb9, 0x04, 0x00, 0x00, 0x00} // mov $4, %ecx
-		}
-		if inst.OldPC == pc0+12 || inst.OldPC == pc1+12 {
-			// NOTE: Inst.Arg uses Intel arg order.
-			if inst.Op != x86asm.MOV || inst.Args[0] != x86asm.RDI || inst.Args[1] != x86asm.R15 {
-				panic("not mov r15, rdi")
+			if inst.Op == x86asm.MOV && inst.Args[0] == x86asm.RDI && inst.Args[1] == x86asm.R15 { // NOTE: inst.Args uses Intel order
+				rdi++
+				inst.Enc = []byte{0x31, 0xff}
 			}
-			inst.Enc = []byte{0x31, 0xff}
 		}
 		inst.NewPC = n
 		pcmap[inst.OldPC] = inst.NewPC
 		n += len(inst.Enc)
 	}
-	
+
+	if edx != 2 || ecx != 2 || rdi != 2 {
+		// Should be impossible - the patterns matched.
+		return nil, fmt.Errorf("decoding bsd_ast did not find matched instructions")
+	}
+
 	// Update PC-relative references.
 	var newcode []byte
 	for i := range prog {
@@ -113,33 +113,32 @@ func (f *fix) apply14(tlsOff uint32, bsd_ast []byte, timers [][]int) ([]byte, er
 			if 0 <= addr && addr < len(bsd_ast) {
 				new, ok := pcmap[addr]
 				if !ok {
-					panic("missing in pcmap")
+					return nil, fmt.Errorf("found PC-relative offset to unaligned instruction")
 				}
 				addr = new
 			}
 			newdelta := addr - (inst.NewPC + inst.PCRelOff + 1)
 			if int(int8(newdelta)) != newdelta {
-				panic("cannot rewrite short pcrel")
+				return nil, fmt.Errorf("unable to expand 8-bit PC-relative offset to 32-bit PC-relative offset")
 			}
 			inst.Enc[inst.PCRelOff] = uint8(newdelta)
 		case 4:
-			addr := int64(inst.OldPC + inst.PCRelOff + 4) + int64(int32(binary.LittleEndian.Uint32(inst.Enc[inst.PCRelOff:])))
+			addr := int64(inst.OldPC+inst.PCRelOff+4) + int64(int32(binary.LittleEndian.Uint32(inst.Enc[inst.PCRelOff:])))
 			if 0 <= addr && addr < int64(len(bsd_ast)) {
 				new, ok := pcmap[int(addr)]
 				if !ok {
-					panic("missing in pcmap")
+					return nil, fmt.Errorf("found PC-relative offset to unaligned instruction")
 				}
 				addr = int64(new)
 			}
-			newdelta := addr - int64(inst.NewPC + inst.PCRelOff + 4)
+			newdelta := addr - int64(inst.NewPC+inst.PCRelOff+4)
 			if int64(int32(newdelta)) != newdelta {
-				panic("cannot rewrite long pcrel")
+				return nil, fmt.Errorf("unable to encode 64-bit PC-relative offset")
 			}
 			binary.LittleEndian.PutUint32(inst.Enc[inst.PCRelOff:], uint32(newdelta))
 		}
-		newcode = append(newcode, inst.Enc...)		
+		newcode = append(newcode, inst.Enc...)
 	}
-	
 
 	for len(newcode) < len(bsd_ast) {
 		newcode = append(newcode, 0x90)
