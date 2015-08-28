@@ -7,6 +7,15 @@
 // pprof_mac_fix applies a binary patch to the OS X kernel in order to make
 // pprof profiling report accurate values.
 //
+// Hooray Hooray Hooray
+//
+// The public beta of OS X 10.11 El Capitan appears to contain a fix for the
+// underlying kernel bug. It therefore appears that pprof_mac_fix is unnecessary
+// on that system: pprof will just work out of the box.
+//
+// If run on an OS X 10.11 system, pprof_mac_fix will report that the kernel
+// is already correct without any patch.
+//
 // Warning Warning Warning
 //
 // This program is meant to modify the operating system kernel, the program
@@ -209,6 +218,10 @@ func fixIt(k *kernel) {
 			fmt.Fprintf(os.Stderr, "kernel %s already patched; not rewriting\n", k.file)
 			os.Exit(2)
 		}
+		if len(errs) == 1 && errs[0] == errNoBug {
+			fmt.Fprintf(os.Stderr, "kernel %s works without any patch; not rewriting\n", k.file)
+			os.Exit(2)
+		}
 		fmt.Fprintf(os.Stderr, "unrecognized kernel: %s\n", k.file)
 		for _, err := range errs {
 			fmt.Fprintf(os.Stderr, "%s\n", err)
@@ -304,7 +317,7 @@ func fixAnyVersion(k *kernel) []error {
 	var errs []error
 	for _, f := range fixes {
 		err := f.apply(k.current_thread, k.bsd_ast)
-		if err == errPatched {
+		if err == errPatched || err == errNoBug {
 			return []error{err}
 		}
 		if err != nil {
@@ -316,7 +329,10 @@ func fixAnyVersion(k *kernel) []error {
 	return errs
 }
 
-var errPatched = fmt.Errorf("kernel already patched")
+var (
+	errPatched = fmt.Errorf("kernel already patched")
+	errNoBug   = fmt.Errorf("kernel is correct without patch - Apple fixed the bug!")
+)
 
 var updateText = `
 For an update, mail rsc@golang.org with the output printed by:
@@ -609,6 +625,9 @@ func (f *fix) apply(current_thread []byte, bsd_ast []byte) error {
 	}
 
 	var replace [][]byte
+	if f.version >= "15." && total == 2 && len(timers) == 1 && len(timers[0]) == 2 && strings.HasSuffix(f.version, "no bug") {
+		return errNoBug
+	}
 	if f.version >= "14." {
 		if total != 2 || len(timers) != 1 || len(timers[0]) != 2 {
 			return fmt.Errorf("cannot match bsd_ast 14 timer call %d %d", total, len(timers[0]))
@@ -1052,6 +1071,7 @@ var fixes = []*fix{
 	&fix_13_0_0_fixed,
 	&fix_14_0_0,
 	&fix_14_0_0_fixed,
+	&fix_15_0_0_nobug,
 }
 
 // Darwin 13.0.0 (Mavericks)

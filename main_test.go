@@ -93,3 +93,22 @@ func gdbDisas(t *testing.T, file, name string) []byte {
 	}
 	return disas
 }
+
+var fixed = []string{
+	"testdata/mach_kernel_15_0_0",
+}
+
+func TestFixed(t *testing.T) {
+	for _, tt := range fixed {
+		k := loadKernel(tt)
+		errs := fixAnyVersion(k)
+		t.Log("%s: %v\n", tt, errs)
+		if len(errs) != 1 || errs[0] != errNoBug {
+			t.Errorf("%s: correct kernel not recognized", tt)
+			for _, err := range errs {
+				t.Errorf("%s", err)
+			}
+			continue
+		}
+	}
+}

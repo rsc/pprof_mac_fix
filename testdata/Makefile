@@ -11,6 +11,7 @@ all: \
 	mach_kernel_13_0_0_fix \
 	mach_kernel_14_0_0 \
 	mach_kernel_14_0_0_fix \
+	mach_kernel_15_0_0 \
 
 %_i386: %_i386.s
 	gcc -m32 -o $*_i386 $*_i386.s
