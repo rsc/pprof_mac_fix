@@ -34,7 +34,7 @@ An earlier version of this program shipped with a buggy patch for OS X
 to restore your old kernel and patch using an updated copy of this
 program:
 
-	go get -u code.google.com/p/rsc/cmd/pprof_mac_fix
+	go get -u rsc.io/pprof_mac_fix
 
 If running http://swtch.com/~rsc/macbug.c crashes your system, you have
 the buggy patch applied.
@@ -50,7 +50,7 @@ which will prompt for your password and install the new kernel. It saves
 the old kernel as a numbered file in the kernel source directory (the
 root directory or, for OS X 10.10 Yosemite, /System/Library/Kernels).
 
-	go get code.google.com/p/rsc/cmd/pprof_mac_fix
+	go get rsc.io/pprof_mac_fix
 	pprof_mac_fix
 
 Finally, cross your fingers and reboot.
